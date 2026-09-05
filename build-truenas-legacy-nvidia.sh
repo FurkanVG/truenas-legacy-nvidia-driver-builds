@@ -298,6 +298,23 @@ if text.count(preload_needle) != 1:
     raise SystemExit("ERROR: upstream builder layout changed; cannot preload NVIDIA installer")
 text = text.replace(preload_needle, preload_insert, 1)
 
+download_block = '''if [ -f "$RUN_FILE" ]; then
+    info "Run file already present, skipping download"
+else
+    info "Downloading from $NV_URL"
+    wget -q --show-progress -c "$NV_URL" || die "Failed to download $RUN_FILE"
+fi
+'''
+download_replacement = '''if [ -f "/work/cache/$RUN_FILE" ]; then
+    cp "/work/cache/$RUN_FILE" "$RUN_FILE"
+else
+    die "Verified NVIDIA installer is missing from /work/cache"
+fi
+'''
+if text.count(download_block) != 1:
+    raise SystemExit("ERROR: upstream builder layout changed; cannot disable unverified installer download")
+text = text.replace(download_block, download_replacement, 1)
+
 verify_needle = 'chmod +x "$RUN_FILE"\n'
 verify_insert = (
     'printf \'%s  %s\\n\' "${NVIDIA_RUN_SHA256:?}" "$RUN_FILE" | sha256sum -c - \\\n'
