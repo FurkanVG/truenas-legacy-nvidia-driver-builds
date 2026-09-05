@@ -2,6 +2,20 @@
 
 Builds a customized TrueNAS update embedding the proprietary NVIDIA 580.173.02 driver for supported legacy GPU generations.
 
+## Warning and disclaimer
+
+Use this project entirely at your own risk. This is an unofficial community project and is not affiliated with or endorsed by iXsystems, TrueNAS, or NVIDIA. The generated update is experimental and may cause failed updates, an unbootable system, driver problems, data loss, downtime, or hardware damage.
+
+Before applying an update:
+
+- Create and verify a backup of the TrueNAS configuration.
+- Back up all important data and encryption keys; do not rely on this update as a backup.
+- Create and verify a TrueNAS boot-environment backup and keep reliable recovery media available.
+- Confirm that you have console access and a tested rollback or reinstallation plan.
+- Test on non-production hardware whenever possible and use an appropriate maintenance window.
+
+No warranty is provided. To the maximum extent permitted by applicable law, the author and contributors accept no liability for any direct or indirect loss, damage, data loss, system outage, security issue, hardware issue, or other consequence resulting from using this project or its generated files. You are responsible for deciding whether it is appropriate for your environment and for maintaining current, restorable backups.
+
 ## GPU support
 
 NVIDIA's 580.xx branch supports the following legacy architectures and product families:
