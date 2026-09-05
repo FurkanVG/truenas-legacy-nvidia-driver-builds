@@ -36,6 +36,8 @@ Always verify the exact GPU PCI ID against NVIDIA's table before installing the 
 
 ## Run
 
+You can either run the builder yourself or download a matching precompiled update from the [GitHub Releases](https://github.com/FurkanVG/truenas-legacy-nvidia-driver-builds/releases) page. If using a release asset, select the correct TrueNAS version and verify its accompanying SHA256 checksum before installation.
+
 On a 64-bit Ubuntu/Debian Linux host with `sudo` and Docker:
 
 ```bash
