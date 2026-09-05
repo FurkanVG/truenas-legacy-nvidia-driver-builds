@@ -220,7 +220,7 @@ echo "Selected version: ${VERSION}"
 echo "Update URL     : ${UPDATE_URL}"
 echo "Expected SHA256 : ${UPDATE_SHA256}"
 
-banner "1/9 Obtain + verify official TrueNAS ${VERSION} update"
+banner "1/10 Obtain + verify official TrueNAS ${VERSION} update"
 
 if [[ ! -f "$OFFICIAL_UPDATE" ]]; then
     wget -c --show-progress -O "$OFFICIAL_UPDATE" "$UPDATE_URL"
@@ -254,7 +254,7 @@ print(kernel)
 
 echo "TrueNAS kernel: ${KERNEL_EXPECTED}"
 
-banner "2/9 Clone pinned NVIDIA sysext builder"
+banner "2/10 Clone pinned NVIDIA sysext builder"
 
 sudo rm -rf "$COMMUNITY_REPO"
 
@@ -272,6 +272,42 @@ NVIDIA_BUILDER_COMMIT_ACTUAL="$(git rev-parse HEAD)"
 [[ "$NVIDIA_BUILDER_COMMIT_ACTUAL" == "$NVIDIA_BUILDER_COMMIT_EXPECTED" ]] \
     || die "Checked out NVIDIA builder commit '$NVIDIA_BUILDER_COMMIT_ACTUAL', expected '$NVIDIA_BUILDER_COMMIT_EXPECTED'"
 echo "Builder commit: ${NVIDIA_BUILDER_COMMIT_ACTUAL}"
+
+# Patch the pinned upstream entrypoint only in the disposable checkout so the
+# verified host-side NVIDIA installer is used and verified inside the build
+# container before the upstream script can execute it.
+python3 - "$COMMUNITY_REPO/scripts/build-nvidia-sysext.sh" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+
+preload_needle = 'BUILD_DIR="${WORK_ROOT}/nvidia_build"\n'
+preload_insert = (
+    preload_needle
+    + '\n'
+    + '# Preloaded and independently verified by the outer builder.\n'
+    + 'PRELOADED_RUN_FILE="NVIDIA-Linux-x86_64-${NVIDIA_VERSION}-no-compat32.run"\n'
+    + 'if [ -f "/work/cache/$PRELOADED_RUN_FILE" ]; then\n'
+    + '    cp "/work/cache/$PRELOADED_RUN_FILE" "$BUILD_DIR/$PRELOADED_RUN_FILE"\n'
+    + 'fi\n'
+)
+if text.count(preload_needle) != 1:
+    raise SystemExit("ERROR: upstream builder layout changed; cannot preload NVIDIA installer")
+text = text.replace(preload_needle, preload_insert, 1)
+
+verify_needle = 'chmod +x "$RUN_FILE"\n'
+verify_insert = (
+    'printf \'%s  %s\\n\' "${NVIDIA_RUN_SHA256:?}" "$RUN_FILE" | sha256sum -c - \\\n'
+    '    || die "NVIDIA installer SHA256 verification failed"\n'
+    + verify_needle
+)
+if text.count(verify_needle) != 1:
+    raise SystemExit("ERROR: upstream builder layout changed; cannot verify NVIDIA installer")
+text = text.replace(verify_needle, verify_insert, 1)
+path.write_text(text)
+PY
 
 banner "3/10 Ensure pinned Ubuntu 24.04 Docker image exists"
 
@@ -308,6 +344,7 @@ mkdir -p "$RAW_DIR"
     -v "$RAW_DIR:/work/out" \
     -e DEBIAN_FRONTEND=noninteractive \
     -e NVIDIA_VERSION="$NVIDIA_VERSION" \
+    -e NVIDIA_RUN_SHA256="$NVIDIA_RUN_SHA256" \
     -e TRUENAS_VERSION="$VERSION" \
     -e TRUENAS_CODENAME="$TRUENAS_CODENAME" \
     "$DOCKER_IMAGE" \
@@ -336,11 +373,6 @@ mkdir -p "$RAW_DIR"
             curl \
             patch \
             git
-
-        RUN_FILE="NVIDIA-Linux-x86_64-${NVIDIA_VERSION}-no-compat32.run"
-        mkdir -p /tmp/nvidia_build
-        cp "/work/cache/$RUN_FILE" "/tmp/nvidia_build/$RUN_FILE"
-        chmod +x "/tmp/nvidia_build/$RUN_FILE"
 
         bash /work/repo/scripts/build-nvidia-sysext.sh \
             --nvidia-version="$NVIDIA_VERSION" \

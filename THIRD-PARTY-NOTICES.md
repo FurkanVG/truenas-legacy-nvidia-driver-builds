@@ -12,4 +12,4 @@ TrueNAS update contents and related components remain subject to their respectiv
 
 ## Build dependencies
 
-The build uses an Ubuntu container image, Ubuntu/Debian packages, and the external [TrueNAS Community NVIDIA driver builder](https://github.com/truenas-community-sysexts/nvidia-driver-support). Each component remains subject to its own license and terms. The builder pins the external source commit and container image digest used for reproducible builds, but package repositories and vendor download terms still apply.
+The build uses an Ubuntu container image, Ubuntu/Debian packages, and the external [TrueNAS Community NVIDIA driver builder](https://github.com/truenas-community-sysexts/nvidia-driver-support). Each component remains subject to its own license and terms. The builder pins the external source commit, container image digest, and NVIDIA installer SHA256 used for reproducible builds, but package repositories and vendor download terms still apply.
