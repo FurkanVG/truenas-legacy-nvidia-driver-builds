@@ -289,6 +289,7 @@ preload_insert = (
     + '\n'
     + '# Preloaded and independently verified by the outer builder.\n'
     + 'PRELOADED_RUN_FILE="NVIDIA-Linux-x86_64-${NVIDIA_VERSION}-no-compat32.run"\n'
+    + 'mkdir -p "$BUILD_DIR"\n'
     + 'if [ -f "/work/cache/$PRELOADED_RUN_FILE" ]; then\n'
     + '    cp "/work/cache/$PRELOADED_RUN_FILE" "$BUILD_DIR/$PRELOADED_RUN_FILE"\n'
     + 'fi\n'
