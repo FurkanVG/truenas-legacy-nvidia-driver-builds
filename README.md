@@ -39,8 +39,8 @@ Always verify the exact GPU PCI ID against NVIDIA's table before installing the 
 On a 64-bit Ubuntu/Debian Linux host with `sudo` and Docker:
 
 ```bash
-chmod +x build-fast-update-v3-25.10.7.sh
-./build-fast-update-v3-25.10.7.sh
+chmod +x build-truenas-legacy-nvidia.sh
+./build-truenas-legacy-nvidia.sh
 ```
 
 The script automatically selects the latest stable TrueNAS release, verifies its SHA256, detects its kernel, builds the proprietary NVIDIA driver, and writes the custom update under the script directory's `output/` folder.
