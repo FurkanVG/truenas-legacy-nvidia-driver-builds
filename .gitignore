@@ -1,0 +1,12 @@
+# Generated build directories
+/work/
+/output/
+
+# Generated TrueNAS/NVIDIA artifacts
+*.raw
+*.update
+*.sha256
+
+# Local logs and editor files
+*.log
+.DS_Store

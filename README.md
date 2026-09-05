@@ -46,3 +46,7 @@ chmod +x build-fast-update-v3-25.10.7.sh
 The script automatically selects the latest stable TrueNAS release, verifies its SHA256, detects its kernel, builds the proprietary NVIDIA driver, and writes the custom update under the script directory's `output/` folder.
 
 Run as your normal user; the script uses `sudo` when needed.
+
+## License
+
+The original script and documentation in this repository are licensed under the [MIT License](LICENSE). This license does not grant permission to redistribute NVIDIA software, TrueNAS software, update images, or other third-party components produced or downloaded by the script. Those components remain subject to their respective owners' terms and licenses.
