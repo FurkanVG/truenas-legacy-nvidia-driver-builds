@@ -10,3 +10,13 @@
 # Local logs and editor files
 *.log
 .DS_Store
+
+# Local credentials and certificates
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials.*

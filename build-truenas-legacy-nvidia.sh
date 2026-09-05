@@ -4,12 +4,19 @@ set -Eeuo pipefail
 VERSION=""
 KERNEL_EXPECTED=""
 NVIDIA_VERSION="580.173.02"
+NVIDIA_RUN_FILE="NVIDIA-Linux-x86_64-${NVIDIA_VERSION}-no-compat32.run"
+NVIDIA_RUN_SHA256="e90b79270cfc12fc9374721df4831c6cf0ec332f8ce993c40bb018b0e28bf238"
 
 UPDATE_BASE_URL="https://update.truenas.com/scale"
 TRAINS_URL="https://auto-public.sys.truenas.net/trains_v2.json"
 
 NVIDIA_BUILDER_REPO="https://github.com/truenas-community-sysexts/nvidia-driver-support.git"
-NVIDIA_BUILDER_REF="main"
+NVIDIA_BUILDER_COMMIT_EXPECTED="59368f7d4aa094951492f28e23a4db4a80c36a0c"
+
+# Pin the build image so a mutable container tag cannot silently change the
+# generated driver or update. This is the digest currently corresponding to
+# Ubuntu 24.04 on the supported x86_64 host architecture.
+DOCKER_IMAGE="ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 WORK="$SCRIPT_DIR/work"
@@ -42,6 +49,8 @@ RAW_DIR="$WORK/raw-output"
 OUTER="$WORK/update-outer"
 ROOTFS_TREE="$WORK/rootfs-tree"
 VERIFY="$WORK/verify"
+NVIDIA_RUN_CACHE="$CACHE/$NVIDIA_RUN_FILE"
+NVIDIA_RUN_URL="https://us.download.nvidia.com/XFree86/Linux-x86_64/${NVIDIA_VERSION}/${NVIDIA_RUN_FILE}"
 
 # Use the user's Docker daemon when available. On a standard Ubuntu install,
 # fall back to sudo docker when the user is not in the docker group yet.
@@ -245,26 +254,44 @@ print(kernel)
 
 echo "TrueNAS kernel: ${KERNEL_EXPECTED}"
 
-banner "2/9 Clone latest NVIDIA sysext builder"
+banner "2/9 Clone pinned NVIDIA sysext builder"
 
 sudo rm -rf "$COMMUNITY_REPO"
 
-git clone --depth 1 --branch "$NVIDIA_BUILDER_REF" "$NVIDIA_BUILDER_REPO" "$COMMUNITY_REPO"
+git init "$COMMUNITY_REPO" >/dev/null
+git -C "$COMMUNITY_REPO" remote add origin "$NVIDIA_BUILDER_REPO"
+git -C "$COMMUNITY_REPO" fetch --depth 1 origin "$NVIDIA_BUILDER_COMMIT_EXPECTED"
+git -C "$COMMUNITY_REPO" checkout --detach "$NVIDIA_BUILDER_COMMIT_EXPECTED" >/dev/null
 
 cd "$COMMUNITY_REPO"
 
 # Only needed by legacy 470 branch, but harmless and makes checkout complete.
 git submodule update --init --recursive
 
-NVIDIA_BUILDER_COMMIT="$(git rev-parse HEAD)"
-echo "Builder ref   : ${NVIDIA_BUILDER_REF}"
-echo "Builder commit: ${NVIDIA_BUILDER_COMMIT}"
+NVIDIA_BUILDER_COMMIT_ACTUAL="$(git rev-parse HEAD)"
+[[ "$NVIDIA_BUILDER_COMMIT_ACTUAL" == "$NVIDIA_BUILDER_COMMIT_EXPECTED" ]] \
+    || die "Checked out NVIDIA builder commit '$NVIDIA_BUILDER_COMMIT_ACTUAL', expected '$NVIDIA_BUILDER_COMMIT_EXPECTED'"
+echo "Builder commit: ${NVIDIA_BUILDER_COMMIT_ACTUAL}"
 
-banner "3/9 Ensure Ubuntu 24.04 Docker image exists"
+banner "3/10 Ensure pinned Ubuntu 24.04 Docker image exists"
 
-"${DOCKER[@]}" pull ubuntu:24.04
+"${DOCKER[@]}" pull "$DOCKER_IMAGE"
 
-banner "4/9 Build proprietary NVIDIA nvidia.raw"
+banner "4/10 Obtain + verify pinned NVIDIA ${NVIDIA_VERSION} installer"
+
+if [[ -f "$NVIDIA_RUN_CACHE" ]] && \
+    ! printf '%s  %s\n' "$NVIDIA_RUN_SHA256" "$NVIDIA_RUN_CACHE" | sha256sum -c - >/dev/null 2>&1; then
+    rm -f "$NVIDIA_RUN_CACHE"
+fi
+
+if [[ ! -f "$NVIDIA_RUN_CACHE" ]]; then
+    wget -c --show-progress -O "$NVIDIA_RUN_CACHE" "$NVIDIA_RUN_URL"
+fi
+
+printf '%s  %s\n' "$NVIDIA_RUN_SHA256" "$NVIDIA_RUN_CACHE" | sha256sum -c - \
+    || die "NVIDIA ${NVIDIA_VERSION} installer SHA256 verification failed"
+
+banner "5/10 Build proprietary NVIDIA nvidia.raw"
 
 sudo rm -rf "$RAW_DIR"
 mkdir -p "$RAW_DIR"
@@ -277,12 +304,13 @@ mkdir -p "$RAW_DIR"
 "${DOCKER[@]}" run --rm \
     -v "$COMMUNITY_REPO:/work/repo:ro" \
     -v "$OFFICIAL_UPDATE:/work/truenas.update:ro" \
+    -v "$CACHE:/work/cache:ro" \
     -v "$RAW_DIR:/work/out" \
     -e DEBIAN_FRONTEND=noninteractive \
     -e NVIDIA_VERSION="$NVIDIA_VERSION" \
     -e TRUENAS_VERSION="$VERSION" \
     -e TRUENAS_CODENAME="$TRUENAS_CODENAME" \
-    ubuntu:24.04 \
+    "$DOCKER_IMAGE" \
     bash -lc '
         set -Eeuo pipefail
 
@@ -309,6 +337,11 @@ mkdir -p "$RAW_DIR"
             patch \
             git
 
+        RUN_FILE="NVIDIA-Linux-x86_64-${NVIDIA_VERSION}-no-compat32.run"
+        mkdir -p /tmp/nvidia_build
+        cp "/work/cache/$RUN_FILE" "/tmp/nvidia_build/$RUN_FILE"
+        chmod +x "/tmp/nvidia_build/$RUN_FILE"
+
         bash /work/repo/scripts/build-nvidia-sysext.sh \
             --nvidia-version="$NVIDIA_VERSION" \
             --truenas-version="$TRUENAS_VERSION" \
@@ -328,9 +361,10 @@ if [[ -f "$RAW_DIR/nvidia.raw.sha256" ]]; then
 fi
 
 cp -f "$RAW_DIR/nvidia.raw" "$CUSTOM_RAW"
-sha256sum "$CUSTOM_RAW" > "$OUT/nvidia.raw.sha256"
+( cd "$(dirname "$CUSTOM_RAW")" && sha256sum "$(basename "$CUSTOM_RAW")" ) \
+    > "$OUT/nvidia.raw.sha256"
 
-banner "5/9 Hard-verify nvidia.raw"
+banner "6/10 Hard-verify nvidia.raw"
 
 RAW_VERIFY="$VERIFY/raw"
 
@@ -369,7 +403,7 @@ echo "nvidia.ko license : $MOD_LICENSE"
 
 echo "nvidia.raw verification PASSED."
 
-banner "6/9 Extract official update + inject verified nvidia.raw"
+banner "7/10 Extract official update + inject verified nvidia.raw"
 
 sudo rm -rf "$OUTER" "$ROOTFS_TREE"
 
@@ -415,7 +449,7 @@ sudo cp -f "$CUSTOM_RAW" "$TARGET_RAW"
 sudo chown root:root "$TARGET_RAW"
 sudo chmod 0644 "$TARGET_RAW"
 
-banner "7/9 Regenerate rootfs.mtree + rootfs.squashfs"
+banner "8/10 Regenerate rootfs.mtree + rootfs.squashfs"
 
 MTREE_BODY="$WORK/rootfs.mtree.body"
 
@@ -491,7 +525,7 @@ sudo rm -f "$ROOTFS"
 
 sudo mksquashfs "$ROOTFS_TREE" "$ROOTFS" -comp xz >/dev/null
 
-banner "8/9 Recompute update manifest + build final .update"
+banner "9/10 Recompute update manifest + build final .update"
 
 sudo python3 - "$OUTER" "$ROOTFS_TREE" <<'PY'
 import hashlib
@@ -568,9 +602,10 @@ sudo mksquashfs "$OUTER" "$CUSTOM_UPDATE" -noD >/dev/null
 
 sudo chown "$(id -u):$(id -g)" "$CUSTOM_UPDATE"
 
-sha256sum "$CUSTOM_UPDATE" > "$CUSTOM_UPDATE.sha256"
+( cd "$(dirname "$CUSTOM_UPDATE")" && sha256sum "$(basename "$CUSTOM_UPDATE")" ) \
+    > "$CUSTOM_UPDATE.sha256"
 
-banner "9/9 End-to-end verify final custom update"
+banner "10/10 End-to-end verify final custom update"
 
 FINAL_OUTER="$VERIFY/final-outer"
 FINAL_ROOT="$VERIFY/final-root"

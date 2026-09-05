@@ -45,10 +45,12 @@ chmod +x build-truenas-legacy-nvidia.sh
 ./build-truenas-legacy-nvidia.sh
 ```
 
-The script automatically selects the latest stable TrueNAS release, verifies its SHA256, detects its kernel, builds the proprietary NVIDIA driver, and writes the custom update under the script directory's `output/` folder.
+The script automatically selects the latest stable TrueNAS release, verifies its SHA256, verifies the pinned NVIDIA installer, detects the TrueNAS kernel, builds the proprietary NVIDIA driver, and writes the custom update under the script directory's `output/` folder.
 
 Run as your normal user; the script uses `sudo` when needed.
 
 ## License
 
 The original script and documentation in this repository are licensed under the [MIT License](LICENSE). This license does not grant permission to redistribute NVIDIA software, TrueNAS software, update images, or other third-party components produced or downloaded by the script. Those components remain subject to their respective owners' terms and licenses.
+
+See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) before using or redistributing release assets.
