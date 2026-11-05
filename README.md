@@ -49,6 +49,14 @@ The script automatically selects the latest stable TrueNAS release, verifies its
 
 Run as your normal user; the script uses `sudo` when needed.
 
+To build a specific release, select its official train and exact version explicitly:
+
+```bash
+./build-truenas-legacy-nvidia.sh --train TrueNAS-SCALE-Goldeye --version 25.10.8
+```
+
+Explicit selection also allows experimental releases (for example, `--train TrueNAS-27-RC --version 27.0.0-RC.1`). The default command still selects only stable releases. A successful build verifies image contents and kernel module metadata; it does not establish GPU functionality or upgrade compatibility on real hardware.
+
 ## License
 
 The original script and documentation in this repository are licensed under the [MIT License](LICENSE). This license does not grant permission to redistribute NVIDIA software, TrueNAS software, update images, or other third-party components produced or downloaded by the script. Those components remain subject to their respective owners' terms and licenses.

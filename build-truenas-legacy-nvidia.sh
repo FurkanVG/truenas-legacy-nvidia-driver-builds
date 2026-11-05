@@ -2,6 +2,25 @@
 set -Eeuo pipefail
 
 VERSION=""
+REQUESTED_VERSION=""
+REQUESTED_TRAIN=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --train|--version)
+            [[ $# -ge 2 && -n "$2" ]] || { echo "Missing value for $1" >&2; exit 2; }
+            if [[ "$1" == --train ]]; then REQUESTED_TRAIN="$2"; else REQUESTED_VERSION="$2"; fi
+            shift 2 ;;
+        --help|-h)
+            echo "Usage: $0 [--train TRAIN --version VERSION]"
+            echo "Default: latest stable. Explicit train/version also permits prereleases."
+            exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+if [[ -n "$REQUESTED_TRAIN" || -n "$REQUESTED_VERSION" ]]; then
+    [[ "$REQUESTED_TRAIN" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ && "$REQUESTED_VERSION" =~ ^[0-9][A-Za-z0-9.-]*$ ]] \
+        || { echo "Provide both --train and --version using valid release identifiers" >&2; exit 2; }
+fi
 KERNEL_EXPECTED=""
 NVIDIA_VERSION="580.173.02"
 NVIDIA_RUN_FILE="NVIDIA-Linux-x86_64-${NVIDIA_VERSION}-no-compat32.run"
@@ -125,18 +144,18 @@ mkdir -p "$WORK" "$OUT" "$CACHE" "$RAW_DIR"
 echo
 df -h "$SCRIPT_DIR" || true
 
-banner "Resolve latest stable TrueNAS release"
+banner "Resolve TrueNAS release (latest stable unless explicitly selected)"
 
 # The official update service publishes active trains and per-train release
 # metadata. Select the newest release marked GENERAL, MISSION_CRITICAL, or
 # STABLE, while excluding beta/RC/nightly/developer releases.
-RELEASE_INFO="$(python3 - "$TRAINS_URL" "$UPDATE_BASE_URL" <<'PY'
+RELEASE_INFO="$(python3 - "$TRAINS_URL" "$UPDATE_BASE_URL" "$REQUESTED_TRAIN" "$REQUESTED_VERSION" <<'PY'
 import json
 import re
 import sys
 from urllib.request import Request, urlopen
 
-trains_url, update_base = sys.argv[1:]
+trains_url, update_base, requested_train, requested_version = sys.argv[1:]
 
 def get_json(url):
     request = Request(url, headers={"User-Agent": "TrueNAS-legacy-nvidia-builder/1.0"})
@@ -145,6 +164,16 @@ def get_json(url):
 
 def version_key(version):
     return tuple(int(part) for part in re.findall(r"\d+", version))
+
+if requested_train:
+    releases = get_json(f"{update_base}/{requested_train}/releases.json")
+    matches = [r for r in releases.values() if str(r.get("version")) == requested_version]
+    if len(matches) != 1:
+        raise SystemExit("ERROR: requested version was not uniquely found in official train metadata")
+    release = matches[0]
+    print("\t".join((requested_train, requested_version, str(release["filename"]),
+                     str(release["checksum"]), requested_train.removeprefix("TrueNAS-SCALE-"))))
+    sys.exit(0)
 
 try:
     trains = get_json(trains_url).get("trains", {})
